@@ -1,0 +1,121 @@
+# install krew
+Krew itself is a kubectl plugin that is installed and updated via Krew
+(
+  set -x; cd "$(mktemp -d)" &&
+  OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+  ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+  KREW="krew-${OS}_${ARCH}" &&
+  curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+  tar zxvf "${KREW}.tar.gz" &&
+  ./"${KREW}" install krew
+)
+
+# Add the $HOME/.krew/bin directory to your PATH environment variable
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+
+
+# enable nested virtualization on VirtualBox
+
+➜  ansible-vbox-vagrant-kubernetes git:(master) ✗ VBoxManage -nologo list vms
+
+"ansible-vbox-vagrant-kubernetes_k8s-m-1_1683005126350_93040" {5541fe49-2c25-4431-8686-d318714f421b}
+"ansible-vbox-vagrant-kubernetes_k8s-n-1_1683005482006_22589" {0449bad6-3216-4d42-aa70-50640193f471}
+"ansible-vbox-vagrant-kubernetes_k8s-n-2_1683005718880_88789" {37ab8d9b-1ea4-4754-806f-830374c55db0}
+"ansible-vbox-vagrant-kubernetes_k8s-n-3_1683005969161_8056" {bd4708d5-4d4f-4659-b04b-567ff36e2e82}
+"ansible-vbox-vagrant-kubernetes_k8s-n-4_1683006224050_10312" {f6eac7dc-fc7c-4b0c-84fc-aaedc4329b26}
+
+VBoxManage modifyvm "ansible-vbox-vagrant-kubernetes_k8s-m-1_1683005126350_93040" --nested-hw-virt on
+VBoxManage modifyvm "ansible-vbox-vagrant-kubernetes_k8s-n-1_1683005482006_22589" --nested-hw-virt on
+VBoxManage modifyvm "ansible-vbox-vagrant-kubernetes_k8s-n-2_1683005718880_88789" --nested-hw-virt on
+VBoxManage modifyvm "ansible-vbox-vagrant-kubernetes_k8s-n-3_1683005969161_8056" --nested-hw-virt on
+VBoxManage modifyvm "ansible-vbox-vagrant-kubernetes_k8s-n-4_1683006224050_10312" --nested-hw-virt on
+
+
+
+# Point at latest release
+$ export RELEASE=$(curl https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt)
+
+# Deploy the KubeVirt operator
+$ kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${RELEASE}/kubevirt-operator.yaml
+
+# Create the KubeVirt CR (instance deployment request) which triggers the actual installation
+$ kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${RELEASE}/kubevirt-cr.yaml
+
+# wait until all KubeVirt components are up
+$ kubectl get all -A
+
+# may need to enable emulation mode , nested virtualization
+
+kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}
+
+
+# Enable Live Migration
+
+kubectl create configmap -n kubevirt kubevirt-config --from-literal feature-gates="LiveMigration"
+
+
+
+# install virtctl
+
+export VERSION=v0.59.0
+wget https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/virtctl-${VERSION}-linux-amd64
+
+chmod +x virtctl
+
+mv virtctl $HOME/.local/bin or /usr/local/bin
+
+OR
+
+kubectl krew install virt
+
+
+# related links
+
+https://kubebyexample.com/learning-paths/kubevirt-fundamentals/exposing-virtual-machines-kubevirt#
+
+https://kubevirt.io/labs/kubernetes/lab1.html
+
+https://kubevirt.io/labs/manifests/vm.yaml
+
+
+
+
+# Create a Virtual Machine
+
+kubectl apply -f https://kubevirt.io/labs/manifests/vm.yaml
+
+kubectl get vms
+
+
+# start / stop / console   virtual machine
+
+virtctl start testvm
+
+virtctl console testvm
+
+virtctl stop testvm
+
+kubectl delete vm testvm
+
+OR
+
+kubectl virt start testvm
+
+
+
+
+# For example, to restrict the virt-controller and virt-api pods to only run on the control-plane nodes:
+
+kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"infra": {"nodePlacement": {"nodeSelector": {"node-role.kubernetes.io/control-plane": ""}}}}}'
+
+# To restrict the virt-handler pods to only run on nodes with the "region=primary" label:
+
+kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"workloads": {"nodePlacement": {"nodeSelector": {"region": "primary"}}}}}'
+
+
+
+# If you want to list All the images and container in your Kubernetes cluster you just have to use the -A or --all-namespaces instead of specifying namespace with -n or --namepsace
+kubectl get pods -A -o jsonpath='{range .items[*]}{"\n"}{.metadata.name}{"\t"}{.metadata.namespace}{"\t"}{range .spec.containers[*]}{.name}{"=>"}{.image}{","}{end}{end}'|sort|column -t
+
+
+
